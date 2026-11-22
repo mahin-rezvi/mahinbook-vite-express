@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /api/
+Disallow: /uploads/
+Disallow: /profile/
+Disallow: /friends
+Disallow: /messages
+Disallow: /notifications
+Disallow: /groups
+Disallow: /pages
+Disallow: /events
+Disallow: /marketplace
+Disallow: /search
+Disallow: /settings
+Disallow: /saved
+Disallow: /watch
+Disallow: /memories
+Disallow: /post/
+
+Sitemap: https://mahinbook.pages.dev/sitemap.xml

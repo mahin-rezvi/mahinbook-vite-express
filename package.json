@@ -1,0 +1,16 @@
+{
+  "name": "mahinbook",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev": "node dev.mjs",
+    "build": "npm run build --prefix client",
+    "build:static": "VITE_STATIC_LANDING_ONLY=true npm run build --prefix client",
+    "deploy:site": "npm run build:static && npx --yes wrangler@4.166.0 pages deploy client/dist --project-name=mahinbook --config client/wrangler.jsonc",
+    "start": "npm start --prefix server",
+    "migrate": "npm run migrate --prefix server",
+    "seed": "npm run seed --prefix server"
+  }
+}

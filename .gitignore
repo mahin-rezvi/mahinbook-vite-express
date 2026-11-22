@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.dev.vars
+.wrangler
+*.log
+server/uploads/*
+!server/uploads/.gitkeep
