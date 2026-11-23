@@ -8,7 +8,7 @@
     "dev": "node dev.mjs",
     "build": "npm run build --prefix client",
     "build:static": "VITE_STATIC_LANDING_ONLY=true npm run build --prefix client",
-    "deploy:site": "npm run build:static && npm run deploy:pages --prefix client",
+    "deploy:site": "npm run build && npm run deploy:pages --prefix client",
     "start": "npm start --prefix server",
     "migrate": "npm run migrate --prefix server",
     "seed": "npm run seed --prefix server"

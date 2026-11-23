@@ -25,18 +25,26 @@ npm run build && npm start   # Express serves client/dist plus the API on one po
 
 Uploaded photos and videos are stored on disk in `server/uploads/` when running the full-stack app.
 
-## Cloudflare Pages
+## Cloudflare production deployment
 
-The free Cloudflare Pages build is a static public landing page at `https://mahinbook.pages.dev`. It avoids app API requests and does not show login or signup links that would lead nowhere. The full Express/Postgres app remains in this repository for a server deployment; account features, messaging, and uploads do not run on static hosting.
+The full app is hosted at `https://mahinbook.pages.dev`. Cloudflare Pages serves the React app and forwards `/api`, `/uploads`, and `/ws` through Pages Functions to the `mahinbook-api` Worker. The Worker connects to the existing Neon database through Hyperdrive, stores uploads in the `media_files` table, and uses a Durable Object for live chat and presence. Login cookies stay first-party on the Pages URL.
 
-Create the Pages project once and deploy the static build:
+Deploy the Worker and then the client from the repository root:
 
 ```bash
-npx wrangler pages project create mahinbook --production-branch main
+npx wrangler deploy --config worker/wrangler.jsonc
 npm run deploy:site
 ```
 
-The static build includes landing page metadata, structured data, `robots.txt`, and `sitemap.xml`. Keep `server/.env` out of GitHub; it is ignored by `.gitignore`.
+Set the `JWT_SECRET` Worker secret before deploying:
+
+```bash
+node --env-file=server/.env -e 'process.stdout.write(process.env.JWT_SECRET)' | npx wrangler secret put JWT_SECRET --config worker/wrangler.jsonc
+```
+
+The Hyperdrive binding ID and Pages service binding are in the Wrangler config files. This setup stays on Cloudflare's free Workers plan; its daily Worker and Hyperdrive limits apply. Worker uploads are limited to 8 MB per file and five files per request so buffering remains within the free runtime's memory limit. Uploads live in Neon, so database storage usage grows with uploaded media. Keep `server/.env` out of GitHub; it is ignored by `.gitignore`.
+
+The production build includes landing page metadata, structured data, `robots.txt`, and `sitemap.xml`. `npm run build:static` is available only for making a landing-page-only preview; `npm run deploy:site` deploys the complete app.
 
 ## Features
 

@@ -1,0 +1,23 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "mahinbook-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-23",
+  "compatibility_flags": ["nodejs_compat", "enable_nodejs_http_server_modules"],
+  "vars": {
+    "CLIENT_ORIGIN": "https://mahinbook.pages.dev",
+    "NODE_ENV": "production",
+    "MAHINBOOK_WORKER": "1",
+    "PG_POOL_MAX": "5"
+  },
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "3b35c5cb9c91407d9508af318ad83595" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "CHAT_HUB", "class_name": "ChatHub" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChatHub"] }
+  ],
+  "placement": { "mode": "smart" }
+}

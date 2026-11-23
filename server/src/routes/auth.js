@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { one, q } from '../db.js';
 import { ah, fail } from '../helpers.js';
 import { issueSession, requireAuth, COOKIE, withDefaults } from '../auth.js';
@@ -37,20 +36,23 @@ r.post('/signup', ah(async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(email || '')) fail(400, 'Please enter a valid email address');
   if ((password || '').length < 6) fail(400, 'Password must be at least 6 characters');
   if (await one(`SELECT 1 FROM users WHERE lower(email) = lower($1)`, [email])) fail(409, 'An account with this email already exists');
-  const hash = await bcrypt.hash(password, 10);
   const username = await uniqueUsername(first_name, last_name);
   const u = await one(
     `INSERT INTO users (first_name, last_name, username, email, password_hash, birthday, gender)
-     VALUES ($1,$2,$3,lower($4),$5,$6,$7) RETURNING id`,
-    [first_name.trim(), last_name.trim(), username, email.trim(), hash, birthday || null, gender || null]);
+     VALUES ($1,$2,$3,lower($4),crypt($5, gen_salt('bf', 10)),$6,$7) RETURNING id`,
+    [first_name.trim(), last_name.trim(), username, email.trim(), password, birthday || null, gender || null]);
   await issueSession(res, req, u.id);
   res.status(201).json(await loadMe(u.id));
 }));
 
 r.post('/login', ah(async (req, res) => {
   const { email, password } = req.body || {};
-  const u = await one(`SELECT id, password_hash, deactivated FROM users WHERE lower(email) = lower($1) OR username = $1`, [email || '']);
-  if (!u || !(await bcrypt.compare(password || '', u.password_hash))) fail(401, 'The email or password you entered is incorrect');
+  const u = await one(
+    `SELECT id, deactivated,
+            replace(password_hash, '$2b$', '$2a$') =
+              crypt($2, replace(password_hash, '$2b$', '$2a$')) AS password_valid
+     FROM users WHERE lower(email) = lower($1) OR username = $1`, [email || '', password || '']);
+  if (!u || !u.password_valid) fail(401, 'The email or password you entered is incorrect');
   if (u.deactivated) await q(`UPDATE users SET deactivated = FALSE WHERE id = $1`, [u.id]); // logging in reactivates
   await issueSession(res, req, u.id);
   res.json(await loadMe(u.id));

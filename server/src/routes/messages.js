@@ -41,17 +41,17 @@ async function conversationsFor(uid, convIds) {
      FROM conversations c JOIN conversation_members cm ON cm.conversation_id = c.id AND cm.user_id = $1
      WHERE c.id = ANY($2::int[])
      ORDER BY c.updated_at DESC`, [uid, convIds.map(Number)]);
-  return rows.map((c) => {
+  return Promise.all(rows.map(async (c) => {
     const meReceipts = c.members.find((m) => m.id === uid)?.read_receipts !== false;
-    c.members = c.members.map(({ shows_active, read_receipts, ...m }) => ({
+    c.members = await Promise.all(c.members.map(async ({ shows_active, read_receipts, ...m }) => ({
       ...m,
-      online: shows_active && isOnline(m.id),
+      online: shows_active && await isOnline(m.id),
       last_active: shows_active ? m.last_active : null,
       // Read receipts are reciprocal: hide others' receipts if I turned mine off, and theirs if they did.
       last_read_id: m.id === uid || (meReceipts && read_receipts) ? m.last_read_id : null,
-    }));
+    })));
     return c;
-  });
+  }));
 }
 
 async function conversationFor(uid, convId) {
@@ -94,7 +94,7 @@ r.post('/', ah(async (req, res) => {
         [conv.rows[0].id, req.uid]);
     return conv.rows[0].id;
   });
-  if (isGroup) for (const u of userIds) emit(u, 'conversation', await conversationFor(u, id));
+  if (isGroup) for (const u of userIds) await emit(u, 'conversation', await conversationFor(u, id));
   res.status(201).json(await conversationFor(req.uid, id));
 }));
 
@@ -120,7 +120,7 @@ r.patch('/:id', ah(async (req, res) => {
     await postSystem(req.uid, convId, nickname ? `set a nickname: ${nickname}` : 'cleared a nickname');
   }
   const updated = await conversationFor(req.uid, convId);
-  for (const u of await memberIds(convId)) emit(u, 'conversation', await conversationFor(u, convId));
+  for (const u of await memberIds(convId)) await emit(u, 'conversation', await conversationFor(u, convId));
   res.json(updated);
 }));
 
@@ -129,7 +129,7 @@ async function postSystem(uid, convId, text) {
     [convId, uid, text]);
   await q(`UPDATE conversations SET updated_at = now() WHERE id = $1`, [convId]);
   const full = await one(`${MESSAGE_SELECT} WHERE m.id = $1`, [m.id]);
-  emit(await memberIds(convId), 'message', full);
+  await emit(await memberIds(convId), 'message', full);
 }
 
 r.post('/:id/members', ah(async (req, res) => {
@@ -200,7 +200,7 @@ r.post('/:id/messages', upload.single('file'), ah(async (req, res) => {
   const msg = await one(
     `SELECT x.*, (SELECT ${userJson('u')} FROM users u WHERE u.id = x.sender_id) AS sender
      FROM (${MESSAGE_SELECT} WHERE m.id = $1) x`, [full.id]);
-  emit(info.members, 'message', msg);
+  await emit(info.members, 'message', msg);
   res.status(201).json(msg);
 }));
 
@@ -212,8 +212,8 @@ r.post('/:id/read', ah(async (req, res) => {
     [convId, req.uid, last.id || 0]);
   const me = await one(`SELECT settings FROM users WHERE id = $1`, [req.uid]);
   if (me.settings?.read_receipts !== false)
-    emit((await memberIds(convId)).filter((id) => id !== req.uid), 'read', { conversation_id: convId, user_id: req.uid, last_read_id: last.id || 0 });
-  emit(req.uid, 'read_self', { conversation_id: convId });
+    await emit((await memberIds(convId)).filter((id) => id !== req.uid), 'read', { conversation_id: convId, user_id: req.uid, last_read_id: last.id || 0 });
+  await emit(req.uid, 'read_self', { conversation_id: convId });
   res.json({ ok: true });
 }));
 
@@ -239,7 +239,7 @@ messageRouter.delete('/:id', ah(async (req, res) => {
   if (m.sender_id !== req.uid) fail(403, 'You can only unsend your own messages');
   await q(`UPDATE messages SET deleted = TRUE WHERE id = $1`, [m.id]);
   await q(`DELETE FROM message_reactions WHERE message_id = $1`, [m.id]);
-  emit(await memberIds(m.conversation_id), 'message_update', await one(`${MESSAGE_SELECT} WHERE m.id = $1`, [m.id]));
+  await emit(await memberIds(m.conversation_id), 'message_update', await one(`${MESSAGE_SELECT} WHERE m.id = $1`, [m.id]));
   res.json({ ok: true });
 }));
 
@@ -249,7 +249,7 @@ messageRouter.patch('/:id', ah(async (req, res) => {
   if (Date.now() - new Date(m.created_at) > 15 * 60 * 1000) fail(400, 'Messages can only be edited within 15 minutes');
   await q(`UPDATE messages SET content = $2, edited = TRUE WHERE id = $1`, [m.id, req.body.content || '']);
   const full = await one(`${MESSAGE_SELECT} WHERE m.id = $1`, [m.id]);
-  emit(await memberIds(m.conversation_id), 'message_update', full);
+  await emit(await memberIds(m.conversation_id), 'message_update', full);
   res.json(full);
 }));
 
@@ -260,7 +260,7 @@ messageRouter.post('/:id/react', ah(async (req, res) => {
   else await q(`INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1,$2,$3)
                 ON CONFLICT (message_id, user_id) DO UPDATE SET emoji = EXCLUDED.emoji`, [m.id, req.uid, req.body.emoji || '❤️']);
   const full = await one(`${MESSAGE_SELECT} WHERE m.id = $1`, [m.id]);
-  emit(await memberIds(m.conversation_id), 'message_update', full);
+  await emit(await memberIds(m.conversation_id), 'message_update', full);
   res.json(full);
 }));
 

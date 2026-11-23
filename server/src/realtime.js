@@ -1,10 +1,15 @@
-import { WebSocketServer } from 'ws';
 import { verifyToken, parseCookie, COOKIE } from './auth.js';
 import { q, many, one } from './db.js';
 
 const sockets = new Map(); // userId -> Set<ws>
+let remoteRealtime = null;
 
-export function isOnline(userId) {
+export function configureRealtime(adapter) {
+  remoteRealtime = adapter;
+}
+
+export async function isOnline(userId) {
+  if (remoteRealtime) return remoteRealtime.isOnline(Number(userId));
   return sockets.has(Number(userId));
 }
 
@@ -12,7 +17,8 @@ export function onlineIds() {
   return [...sockets.keys()];
 }
 
-export function emit(userIds, type, payload) {
+export async function emit(userIds, type, payload) {
+  if (remoteRealtime) return remoteRealtime.emit([].concat(userIds).map(Number), type, payload);
   const msg = JSON.stringify({ type, payload });
   for (const id of [].concat(userIds)) {
     const set = sockets.get(Number(id));
@@ -28,10 +34,11 @@ async function friendIds(uid) {
 async function broadcastPresence(uid, online) {
   const u = await one(`SELECT settings FROM users WHERE id = $1`, [uid]);
   if (u?.settings?.show_active_status === false) return;
-  emit(await friendIds(uid), 'presence', { user_id: uid, online, last_active: new Date().toISOString() });
+  await emit(await friendIds(uid), 'presence', { user_id: uid, online, last_active: new Date().toISOString() });
 }
 
-export function attachRealtime(server) {
+export async function attachRealtime(server) {
+  const { WebSocketServer } = await import('ws');
   const wss = new WebSocketServer({ server, path: '/ws' });
 
   wss.on('connection', async (ws, req) => {
@@ -53,7 +60,7 @@ export function attachRealtime(server) {
         const members = await many(
           `SELECT user_id FROM conversation_members WHERE conversation_id = $1`, [msg.conversation_id]);
         if (!members.some((m) => m.user_id === uid)) return;
-        emit(members.map((m) => m.user_id).filter((id) => id !== uid), 'typing', {
+        await emit(members.map((m) => m.user_id).filter((id) => id !== uid), 'typing', {
           conversation_id: msg.conversation_id, user_id: uid, typing: !!msg.typing,
         });
       }

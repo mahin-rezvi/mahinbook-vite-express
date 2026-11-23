@@ -15,9 +15,9 @@ r.get('/', ah(async (req, res) => {
      FROM friendships f JOIN users u ON u.id = f.friend_id WHERE f.user_id = $1 AND NOT u.deactivated
      ORDER BY u.first_name`, [req.uid]);
   res.json({
-    friends: friends.map(({ shows_active, ...f }) => ({
-      ...f, online: shows_active && isOnline(f.id), last_active: shows_active ? f.last_active : null,
-    })),
+    friends: await Promise.all(friends.map(async ({ shows_active, ...f }) => ({
+      ...f, online: shows_active && await isOnline(f.id), last_active: shows_active ? f.last_active : null,
+    }))),
   });
 }));
 
@@ -70,7 +70,7 @@ r.post('/request/:id', ah(async (req, res) => {
   }
   await q(`INSERT INTO friend_requests (from_id, to_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [req.uid, to]);
   await notify({ userId: to, actorId: req.uid, type: 'friend_request' });
-  emit(to, 'friend_request', { from_id: req.uid });
+  await emit(to, 'friend_request', { from_id: req.uid });
   res.json({ relation: 'request_sent' });
 }));
 

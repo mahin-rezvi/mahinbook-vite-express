@@ -56,7 +56,7 @@ r.get('/:id', ah(async (req, res) => {
     relation,
     friends_preview: friendsPreview,
     can_post_on_wall: relation === 'self' || (relation === 'friends' && settings.wall_posting === 'friends'),
-    online: showActive ? isOnline(u.id) : false,
+    online: showActive ? await isOnline(u.id) : false,
     last_active: showActive ? u.last_active : null,
   });
 }));

@@ -1,5 +1,6 @@
 import multer from 'multer';
 import crypto from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { many, one, q, userJson } from './db.js';
@@ -7,13 +8,40 @@ import { emit } from './realtime.js';
 
 export const UPLOAD_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'uploads');
 
+const makeFilename = (file) => {
+  const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 8);
+  return crypto.randomBytes(12).toString('hex') + ext;
+};
+
+const databaseStorage = {
+  _handleFile(_req, file, cb) {
+    const filename = makeFilename(file);
+    const chunks = [];
+    let size = 0;
+    file.stream.on('data', (chunk) => { chunks.push(chunk); size += chunk.length; });
+    file.stream.once('error', cb);
+    file.stream.once('end', () => {
+      q(`INSERT INTO media_files (filename, content_type, data) VALUES ($1,$2,$3)`,
+        [filename, file.mimetype, Buffer.concat(chunks, size)])
+        .then(() => cb(null, { filename, size }))
+        .catch(cb);
+    });
+  },
+  _removeFile(_req, file, cb) {
+    q(`DELETE FROM media_files WHERE filename = $1`, [file.filename]).then(() => cb(null), cb);
+  },
+};
+
+const localStorage = process.env.MAHINBOOK_WORKER === '1' ? null : multer.diskStorage({
+  destination: UPLOAD_DIR,
+  filename: (_req, file, cb) => cb(null, makeFilename(file)),
+});
+
 export const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOAD_DIR,
-    filename: (_req, file, cb) =>
-      cb(null, crypto.randomBytes(12).toString('hex') + path.extname(file.originalname).toLowerCase().slice(0, 8)),
-  }),
-  limits: { fileSize: 25 * 1024 * 1024, files: 10 },
+  storage: process.env.MAHINBOOK_WORKER === '1' ? databaseStorage : localStorage,
+  limits: process.env.MAHINBOOK_WORKER === '1'
+    ? { fileSize: 8 * 1024 * 1024, files: 5 }
+    : { fileSize: 25 * 1024 * 1024, files: 10 },
   fileFilter: (_req, file, cb) => cb(null, /^(image|video)\//.test(file.mimetype)),
 });
 
@@ -67,7 +95,7 @@ export async function notify({ userId, actorId, type, postId = null, commentId =
      )
      ${NOTIF_SELECT_FROM('n')}`,
     [userId, actorId, type, postId, commentId, groupId, data, pref, collapse]);
-  if (full) emit(userId, 'notification', full);
+  if (full) await emit(userId, 'notification', full);
 }
 
 const NOTIF_SELECT_FROM = (source) => `

@@ -1,5 +1,15 @@
 -- MahinBook schema (PostgreSQL / Neon)
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Persistent uploads used by the free Cloudflare Worker deployment.
+CREATE TABLE IF NOT EXISTS media_files (
+  filename     TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL,
+  data         BYTEA NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id            SERIAL PRIMARY KEY,
   first_name    TEXT NOT NULL,
